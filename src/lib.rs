@@ -21,21 +21,21 @@ const M: [usize; 64] = [
     8, 15, 6, 13, 4, 11, 2, 9,
 ];
 
-const ABCD: [u32; 4] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
+const ABCD: [u32; 4] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476];
 
-fn f(b: u32, c: u32, d: u32) -> u32 {
+const fn f(b: u32, c: u32, d: u32) -> u32 {
     (b & c) | (!b & d)
 }
 
-fn g(b: u32, c: u32, d: u32) -> u32 {
+const fn g(b: u32, c: u32, d: u32) -> u32 {
     (b & d) | (c & !d)
 }
 
-fn h(b: u32, c: u32, d: u32) -> u32 {
+const fn h(b: u32, c: u32, d: u32) -> u32 {
     b ^ c ^ d
 }
 
-fn i(b: u32, c: u32, d: u32) -> u32 {
+const fn i(b: u32, c: u32, d: u32) -> u32 {
     c ^ (b | !d)
 }
 
@@ -67,7 +67,8 @@ impl MD5Context {
 
     pub fn digest(&mut self, message: &str) -> String {
         self.encode_message(message);
-        self.transform()
+        self.transform();
+        self.finalize()
     }
 
     pub fn reset(&mut self) {
@@ -96,12 +97,12 @@ impl MD5Context {
         let encoded_words = encoded_message.len().div_ceil(4);
         let message_bits = message.len() * 8;
 
-        self.buffer[..encoded_words].copy_from_slice(u8_to_u32_array(&encoded_message).as_slice());
+        self.buffer[..encoded_words].copy_from_slice(&u8_to_u32_array(&encoded_message));
         self.buffer[14] = message_bits as u32;
         self.buffer[15] = (message_bits >> 32) as u32;
     }
 
-    fn transform(&mut self) -> String {
+    fn transform(&mut self) {
         for j in 0..64 {
             match j {
                 0..=15 => self.step(self.buffer[M[j]], K[j], S[j], f),
@@ -111,27 +112,25 @@ impl MD5Context {
                 _ => (),
             }
         }
-        let result: [u32; 4] = [
-            self.state[0].wrapping_add(ABCD[0]),
-            self.state[1].wrapping_add(ABCD[1]),
-            self.state[2].wrapping_add(ABCD[2]),
-            self.state[3].wrapping_add(ABCD[3]),
-        ];
+    }
 
-        result
+    fn finalize(&mut self) -> String {
+        self.state
             .iter()
+            .zip(ABCD.iter())
+            .map(|(word, state)| word.wrapping_add(*state))
             .flat_map(|word| word.to_ne_bytes())
-            .map(|byte| format!("{:02x}", byte))
+            .map(|byte| format!("{:02X}", byte))
             .collect()
     }
 }
 
 #[test]
 fn test_bitwise_operations() {
-    assert_eq!(f(0x89abcdef, 0xfedcba98, 0x76543210), 0xfedcba98);
-    assert_eq!(g(0x2c34dfa2, 0xde1673be, 0x4b976282), 0x9c1453be);
-    assert_eq!(h(0xd5071367, 0xc058ade2, 0x63c603d7), 0x7699bd52);
-    assert_eq!(i(0x7d502063, 0x8b3d715d, 0x1de3a739), 0x746109ba);
+    assert_eq!(f(0x89ABCDEF, 0xFEDCBA98, 0x76543210), 0xFEDCBA98);
+    assert_eq!(g(0x2C34DFA2, 0xDE1673BE, 0x4B976282), 0x9C1453BE);
+    assert_eq!(h(0xD5071367, 0xC058ADE2, 0x63C603D7), 0x7699BD52);
+    assert_eq!(i(0x7D502063, 0x8B3D715D, 0x1DE3A739), 0x746109BA);
 }
 
 #[test]
@@ -139,6 +138,6 @@ fn test_expected_final_output() {
     let mut context = MD5Context::new();
     assert_eq!(
         context.digest("Fuck you MD5"),
-        String::from("0cca3d88c27d3c9f6b8a3c025f638687")
+        String::from("0CCA3D88C27D3C9F6B8A3C025F638687")
     );
 }
