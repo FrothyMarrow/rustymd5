@@ -29,6 +29,18 @@ struct MD5Context {
 }
 
 impl MD5Context {
+    fn new() -> MD5Context {
+        MD5Context {
+            buffer: [0u32; 16],
+            state: ABCD,
+        }
+    }
+
+    fn digest(&mut self, message: &str) -> String {
+        self.encode_message(message);
+        self.transform()
+    }
+
     fn step(&mut self, m: u32, k: u32, s: u32, c: fn(u32, u32, u32) -> u32) {
         let new_b = self.state[0]
             .wrapping_add(c(self.state[1], self.state[2], self.state[3]))
@@ -109,23 +121,11 @@ fn u8_to_u32_array(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-fn md5_init() -> MD5Context {
-    MD5Context {
-        buffer: [0u32; 16],
-        state: ABCD,
-    }
-}
-
-fn md5_digest(message: &str) -> String {
-    let mut context = md5_init();
-    context.encode_message(message);
-    context.transform()
-}
-
 fn main() {
     let message = "Fuck you MD5";
     println!("Input: {message}");
-    let hash = md5_digest(message);
+    let mut context = MD5Context::new();
+    let hash = context.digest(message);
     println!("MD5 Hash: {hash}");
 }
 
@@ -139,8 +139,9 @@ fn test_bitwise_operations() {
 
 #[test]
 fn test_expected_final_output() {
+    let mut context = MD5Context::new();
     assert_eq!(
-        md5_digest("Fuck you MD5"),
+        context.digest("Fuck you MD5"),
         String::from("0cca3d88c27d3c9f6b8a3c025f638687")
     );
 }
