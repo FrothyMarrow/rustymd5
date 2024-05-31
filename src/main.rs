@@ -28,6 +28,58 @@ struct MD5Context {
     state: [u32; 4],
 }
 
+impl MD5Context {
+    fn step(&mut self, m: u32, k: u32, s: u32, c: fn(u32, u32, u32) -> u32) {
+        let new_b = self.state[0]
+            .wrapping_add(c(self.state[1], self.state[2], self.state[3]))
+            .wrapping_add(m)
+            .wrapping_add(k)
+            .rotate_left(s)
+            .wrapping_add(self.state[1]);
+
+        self.state[0] = self.state[3];
+        self.state[3] = self.state[2];
+        self.state[2] = self.state[1];
+        self.state[1] = new_b;
+    }
+
+    fn encode_message(&mut self, message: &str) {
+        let mut encoded_message: Vec<u8> = message.into();
+        encoded_message.push(0x80);
+
+        let encoded_words = encoded_message.len().div_ceil(4);
+        let message_bits = message.len() * 8;
+
+        self.buffer[..encoded_words].copy_from_slice(u8_to_u32_array(&encoded_message).as_slice());
+        self.buffer[14] = message_bits as u32;
+        self.buffer[15] = (message_bits >> 32) as u32;
+    }
+
+    fn transform(&mut self) -> String {
+        for j in 0..64 {
+            match j {
+                0..=15 => self.step(self.buffer[M[j]], K[j], S[j], f),
+                16..=31 => self.step(self.buffer[M[j]], K[j], S[j], g),
+                32..=47 => self.step(self.buffer[M[j]], K[j], S[j], h),
+                48..=63 => self.step(self.buffer[M[j]], K[j], S[j], i),
+                _ => (),
+            }
+        }
+        let result: [u32; 4] = [
+            self.state[0].wrapping_add(ABCD[0]),
+            self.state[1].wrapping_add(ABCD[1]),
+            self.state[2].wrapping_add(ABCD[2]),
+            self.state[3].wrapping_add(ABCD[3]),
+        ];
+
+        result
+            .iter()
+            .flat_map(|word| word.to_ne_bytes())
+            .map(|byte| format!("{:02x}", byte))
+            .collect()
+    }
+}
+
 fn f(b: u32, c: u32, d: u32) -> u32 {
     (b & c) | (!b & d)
 }
@@ -44,43 +96,6 @@ fn i(b: u32, c: u32, d: u32) -> u32 {
     c ^ (b | !d)
 }
 
-fn rotate_left(n: u32, s: u32) -> u32 {
-    n << s | n >> (32 - s)
-}
-
-fn calculate_common(context: &mut MD5Context, m: u32, k: u32, s: u32, c: u32) {
-    let af = context.state[0].wrapping_add(c);
-    let maf = m.wrapping_add(af);
-    let kmaf = k.wrapping_add(maf);
-    let skmaf = rotate_left(kmaf, s);
-    let bskmaf = skmaf.wrapping_add(context.state[1]);
-
-    context.state[0] = context.state[3];
-    context.state[3] = context.state[2];
-    context.state[2] = context.state[1];
-    context.state[1] = bskmaf;
-}
-
-fn ff(context: &mut MD5Context, m: u32, k: u32, s: u32) {
-    let f = f(context.state[1], context.state[2], context.state[3]);
-    calculate_common(context, m, k, s, f)
-}
-
-fn gg(context: &mut MD5Context, m: u32, k: u32, s: u32) {
-    let g = g(context.state[1], context.state[2], context.state[3]);
-    calculate_common(context, m, k, s, g)
-}
-
-fn hh(context: &mut MD5Context, m: u32, k: u32, s: u32) {
-    let h = h(context.state[1], context.state[2], context.state[3]);
-    calculate_common(context, m, k, s, h)
-}
-
-fn ii(context: &mut MD5Context, m: u32, k: u32, s: u32) {
-    let i = i(context.state[1], context.state[2], context.state[3]);
-    calculate_common(context, m, k, s, i)
-}
-
 fn u8_to_u32_array(bytes: &[u8]) -> Vec<u32> {
     bytes
         .chunks(4)
@@ -94,52 +109,6 @@ fn u8_to_u32_array(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-fn md5_encode_message(context: &mut MD5Context, message: &str) {
-    let mut encoded_message: Vec<u8> = message.into();
-    encoded_message.push(0x80);
-
-    let encoded_words = encoded_message.len().div_ceil(4);
-    let message_bits = message.len() * 8;
-
-    context.buffer[..encoded_words].copy_from_slice(u8_to_u32_array(&encoded_message).as_slice());
-    context.buffer[14] = message_bits as u32;
-    context.buffer[15] = (message_bits >> 32) as u32;
-}
-
-fn md5_transform(context: &mut MD5Context) {
-    for i in 0..16 {
-        ff(context, context.buffer[M[i]], K[i], S[i]);
-    }
-
-    for i in 16..32 {
-        gg(context, context.buffer[M[i]], K[i], S[i]);
-    }
-
-    for i in 32..48 {
-        hh(context, context.buffer[M[i]], K[i], S[i]);
-    }
-
-    for i in 48..64 {
-        ii(context, context.buffer[M[i]], K[i], S[i]);
-    }
-
-    let result: [u32; 4] = [
-        context.state[0].wrapping_add(ABCD[0]),
-        context.state[1].wrapping_add(ABCD[1]),
-        context.state[2].wrapping_add(ABCD[2]),
-        context.state[3].wrapping_add(ABCD[3]),
-    ];
-
-    print!("MD5 Hash: ");
-
-    result
-        .iter()
-        .flat_map(|word| word.to_ne_bytes())
-        .for_each(|byte| print!("{:02x}", byte));
-
-    println!();
-}
-
 fn md5_init() -> MD5Context {
     MD5Context {
         buffer: [0u32; 16],
@@ -147,17 +116,17 @@ fn md5_init() -> MD5Context {
     }
 }
 
-fn md5_digest(message: &str) {
+fn md5_digest(message: &str) -> String {
     let mut context = md5_init();
-    md5_encode_message(&mut context, message);
-
-    println!("Input: {}", message);
-
-    md5_transform(&mut context);
+    context.encode_message(message);
+    context.transform()
 }
 
 fn main() {
-    md5_digest("Fuck you MD5");
+    let message = "Fuck you MD5";
+    println!("Input: {message}");
+    let hash = md5_digest(message);
+    println!("MD5 Hash: {hash}");
 }
 
 #[test]
@@ -166,5 +135,12 @@ fn test_bitwise_operations() {
     assert_eq!(g(0x2c34dfa2, 0xde1673be, 0x4b976282), 0x9c1453be);
     assert_eq!(h(0xd5071367, 0xc058ade2, 0x63c603d7), 0x7699bd52);
     assert_eq!(i(0x7d502063, 0x8b3d715d, 0x1de3a739), 0x746109ba);
-    assert_eq!(rotate_left(0x1234abcd, 12), 0x4abcd123);
+}
+
+#[test]
+fn test_expected_final_output() {
+    assert_eq!(
+        md5_digest("Fuck you MD5"),
+        String::from("0cca3d88c27d3c9f6b8a3c025f638687")
+    );
 }
