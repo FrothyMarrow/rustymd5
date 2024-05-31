@@ -70,6 +70,11 @@ impl MD5Context {
         self.transform()
     }
 
+    pub fn reset(&mut self) {
+        self.buffer = [0u32; 16];
+        self.state = ABCD;
+    }
+
     fn step(&mut self, m: u32, k: u32, s: u32, c: fn(u32, u32, u32) -> u32) {
         let new_b = self.state[0]
             .wrapping_add(c(self.state[1], self.state[2], self.state[3]))
